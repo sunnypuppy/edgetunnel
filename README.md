@@ -41,6 +41,15 @@
 
 部署完成后，即可在代理客户端配置使用。多协议支持功能，使用了 `url.pathname` 作为协议识别，因此需要配置 `path` 路径为 `/{protocol}` 进行对应协议连接。
 
+## 致谢
+
+本项目部分代码参考了以下开源项目：
+
+- [zizifn/edgetunnel](https://github.com/zizifn/edgetunnel): Running V2ray inside edge/serverless runtime.
+- [ca110us/epeius](https://github.com/ca110us/epeius): 以 Serverless 的方式部署 Trojan。
+
+感谢这些开源社区的贡献，帮助我们更好地实现功能和优化代码。
+
 ## 许可证
 
 此项目采用 [MIT](https://github.com/sunnypuppy/edgetunnel/blob/master/LICENSE) 许可证。
