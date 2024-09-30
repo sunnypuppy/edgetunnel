@@ -39,8 +39,8 @@
 
 ## 使用
 
-部署完成后，即可在代理客户端配置使用。多协议支持功能，使用了 `url.pathname` 作为协议识别，因此需要配置 path 路径为 /{protocol} 进行对应协议连接。
+部署完成后，即可在代理客户端配置使用。多协议支持功能，使用了 `url.pathname` 作为协议识别，因此需要配置 `path` 路径为 `/{protocol}` 进行对应协议连接。
 
 ## 许可证
 
-此项目采用 [MIT](https://github.com/sunnypuppy/edgehub/blob/master/LICENSE) 许可证。
+此项目采用 [MIT](https://github.com/sunnypuppy/edgetunnel/blob/master/LICENSE) 许可证。
