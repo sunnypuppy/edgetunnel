@@ -49,18 +49,18 @@ async function handlerWebSocketRequest(request) {
 
 // 1.1 parseSubProtocol
 function parseSubProtocol(request) {
-	const url = new URL(request.url);
+	const url = new URL(decodeURIComponent(request.url));
 	let subProtocol;
 	switch (url.pathname) {
 		case '/vless':
-			subProtocol = 'vless'
+			subProtocol = 'vless';
 			break;
 		case '/trojan':
-			subProtocol = 'trojan'
+			subProtocol = 'trojan';
 			break;
 		default:
 			consoleLog(`Unsupported websocket path: ${url.pathname}`);
-			throw new Error("Unsupported websocket path");
+			throw new Error('Unsupported websocket path');
 	}
 
 	return subProtocol;
@@ -70,13 +70,13 @@ function parseSubProtocol(request) {
 function c2sRStreamHandler(request, webSocket) {
 	return new ReadableStream({
 		start(controller) {
-			webSocket.addEventListener('message', event => {
+			webSocket.addEventListener('message', (event) => {
 				controller.enqueue(event.data);
 			});
-			webSocket.addEventListener('close', event => {
+			webSocket.addEventListener('close', (event) => {
 				consoleLog(`websocket close event: ${JSON.stringify(event)}`);
 			});
-			webSocket.addEventListener('error', event => {
+			webSocket.addEventListener('error', (event) => {
 				consoleLog(`websocket error event: ${event.message}`);
 			});
 
@@ -108,7 +108,7 @@ function s2rWStreamHandler(proxySocket, webSocket, subProtocol) {
 	return new WritableStream({
 		async write(chunk, controller) {
 			if (proxySocket.tcpSocket) {
-				const writer = proxySocket.tcpSocket.writable.getWriter()
+				const writer = proxySocket.tcpSocket.writable.getWriter();
 				await writer.write(chunk);
 				writer.releaseLock();
 				return;
@@ -119,7 +119,7 @@ function s2rWStreamHandler(proxySocket, webSocket, subProtocol) {
 
 			// connect to remote
 			handshakeWithRemote(proxySocket, webSocket, subProtocolData);
-		}
+		},
 	});
 }
 
@@ -133,7 +133,7 @@ function parseSubProtocolDataFromHeader(protocol, data) {
 				consoleLog(`VLESS protocol UUID mismatch`);
 				throw new Error(`VLESS protocol UUID mismatch`);
 			}
-			vlessHeader.remoteAddressType = (addressType => {
+			vlessHeader.remoteAddressType = ((addressType) => {
 				switch (addressType) {
 					case 0x01:
 						return 0x01;
@@ -147,7 +147,7 @@ function parseSubProtocolDataFromHeader(protocol, data) {
 			})(vlessHeader.remoteAddressType);
 			return {
 				...vlessHeader,
-				responseHeader: new Uint8Array([vlessHeader.version, 0x00])
+				responseHeader: new Uint8Array([vlessHeader.version, 0x00]),
 			};
 		case 'trojan':
 			const trojanHeader = parseTrojanHeader(data);
@@ -159,7 +159,7 @@ function parseSubProtocolDataFromHeader(protocol, data) {
 			return { ...trojanHeader };
 		default:
 			consoleLog(`Unknown websocket subprotocol: ${protocol}`);
-			throw new Error("Unknown websocket subprotocol");
+			throw new Error('Unknown websocket subprotocol');
 	}
 }
 
@@ -173,7 +173,7 @@ function parseVLESSHeader(data) {
 
 	// UUID (16 bytes)
 	const uuidBytes = data.slice(offset, offset + 16);
-	const uuid = [...uuidBytes].map(b => b.toString(16).padStart(2, '0')).join('');
+	const uuid = [...uuidBytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 	offset += 16;
 
 	// Addons Length (1 byte)
@@ -210,7 +210,7 @@ function parseVLESSHeader(data) {
 	} else if (remoteAddressType === 0x03) {
 		// IPv6 (16 bytes)
 		const ipv6Bytes = data.slice(offset, offset + 16);
-		remoteAddress = [...ipv6Bytes].map(b => b.toString(16).padStart(2, '0')).join(':');
+		remoteAddress = [...ipv6Bytes].map((b) => b.toString(16).padStart(2, '0')).join(':');
 		offset += 16;
 	}
 
@@ -224,7 +224,7 @@ function parseVLESSHeader(data) {
 		remotePort,
 		remoteAddressType,
 		remoteAddress,
-		payload
+		payload,
 	};
 }
 
@@ -262,7 +262,7 @@ function parseTrojanHeader(data) {
 	} else if (remoteAddressType === 0x04) {
 		// IPv6 (16 bytes)
 		const ipv6Bytes = data.slice(offset, offset + 16);
-		remoteAddress = [...ipv6Bytes].map(b => b.toString(16).padStart(2, '0')).join(':');
+		remoteAddress = [...ipv6Bytes].map((b) => b.toString(16).padStart(2, '0')).join(':');
 		offset += 16;
 	}
 	// DST.PORT (2 bytes)
@@ -283,7 +283,7 @@ function parseTrojanHeader(data) {
 		remoteAddressType,
 		remoteAddress,
 		remotePort,
-		payload
+		payload,
 	};
 }
 
@@ -295,9 +295,13 @@ async function handshakeWithRemote(proxySocket, webSocket, subProtocolData, useP
 	if (useProxy) {
 		if (socks5Proxy) {
 			consoleLog(`connect to ${subProtocolData.remoteAddress}:${subProtocolData.remotePort} by socks5 proxy`);
-			proxySocket.tcpSocket = await connectBySocks5(subProtocolData.remoteAddressType, subProtocolData.remoteAddress, subProtocolData.remotePort)
+			proxySocket.tcpSocket = await connectBySocks5(
+				subProtocolData.remoteAddressType,
+				subProtocolData.remoteAddress,
+				subProtocolData.remotePort
+			);
 		} else {
-			throw new Error("No available proxy config");
+			throw new Error('No available proxy config');
 		}
 	} else {
 		consoleLog(`connect to ${subProtocolData.remoteAddress}:${subProtocolData.remotePort}`);
@@ -310,7 +314,7 @@ async function handshakeWithRemote(proxySocket, webSocket, subProtocolData, useP
 	try {
 		await Promise.race([
 			writer.write(subProtocolData.payload),
-			new Promise((_, reject) => setTimeout(() => reject(new Error("Write operation timed out")), 3000))
+			new Promise((_, reject) => setTimeout(() => reject(new Error('Write operation timed out')), 3000)),
 		]);
 	} catch (error) {
 		consoleLog(`0-rtt data write error: ${error.message}`);
@@ -321,28 +325,30 @@ async function handshakeWithRemote(proxySocket, webSocket, subProtocolData, useP
 	consoleLog(`0-rtt data write finish: need_retry=${needRetryByProxy}, use_proxy=${useProxy}`);
 	if (needRetryByProxy && !useProxy) {
 		consoleLog(`Retry handshake with remote because of writable stream timeout`);
-		return handshakeWithRemote(proxySocket, webSocket, subProtocolData, useProxy = true);
+		return handshakeWithRemote(proxySocket, webSocket, subProtocolData, (useProxy = true));
 	}
 
 	// 3.read back
 	(async () => {
 		consoleLog(`tcpsocket readable stream start: ${proxySocket.tcpSocket}`);
 		let needRetryByProxy = true;
-		await proxySocket.tcpSocket.readable.pipeTo(new WritableStream({
-			async write(chunk, controller) {
-				needRetryByProxy = false;
+		await proxySocket.tcpSocket.readable.pipeTo(
+			new WritableStream({
+				async write(chunk, controller) {
+					needRetryByProxy = false;
 
-				consoleLog(`received data from remote: ${chunk.byteLength}`);
-				const dataToSend = subProtocolData.responseHeader ? await new Blob([subProtocolData.responseHeader, chunk]).arrayBuffer() : chunk;
-				webSocket.send(dataToSend);
-				subProtocolData.responseHeader = null;
-				consoleLog(`received data from remote: finish`);
-			}
-		}));
+					consoleLog(`received data from remote: ${chunk.byteLength}`);
+					const dataToSend = subProtocolData.responseHeader ? await new Blob([subProtocolData.responseHeader, chunk]).arrayBuffer() : chunk;
+					webSocket.send(dataToSend);
+					subProtocolData.responseHeader = null;
+					consoleLog(`received data from remote: finish`);
+				},
+			})
+		);
 		consoleLog(`tcpsocket readable stream finish: need_retry=${needRetryByProxy}, use_proxy=${useProxy}`);
 		if (needRetryByProxy && !useProxy) {
 			consoleLog(`Retry handshake with remote (use proxy) because of readstream empty`);
-			return handshakeWithRemote(proxySocket, webSocket, subProtocolData, useProxy = true);
+			return handshakeWithRemote(proxySocket, webSocket, subProtocolData, (useProxy = true));
 		}
 	})();
 }
@@ -367,7 +373,7 @@ async function connectBySocks5(remoteAddressType, remoteAddress, remotePort) {
 	try {
 		await Promise.race([
 			writer.write(clientGreeting),
-			new Promise((_, reject) => setTimeout(() => reject(new Error("Write operation timed out")), 3000))
+			new Promise((_, reject) => setTimeout(() => reject(new Error('Write operation timed out')), 3000)),
 		]);
 	} catch (error) {
 		consoleLog(`socks5 proxy write error: ${error}`);
@@ -378,31 +384,36 @@ async function connectBySocks5(remoteAddressType, remoteAddress, remotePort) {
 	// Server choice
 	const reader = socks5ProxySocket.readable.getReader();
 	const serverChoiceRes = (await reader.read()).value;
-	if (serverChoiceRes[0] !== 0x05) { // VER, SOCKS version (0x05)
+	if (serverChoiceRes[0] !== 0x05) {
+		// VER, SOCKS version (0x05)
 		throw new Error(`upexpected socks version(${serverChoiceRes[0]}), expected 0x05`);
 	}
 	consoleLog(`server choice finish`);
 
 	// CAUTH, chosen authentication method
-	if (serverChoiceRes[1] === 0xff) { // 0xFF, no acceptable methods were offered
+	if (serverChoiceRes[1] === 0xff) {
+		// 0xFF, no acceptable methods were offered
 		throw new Error(`socks server choice: no acceptable methods were offered`);
 	}
-	if (serverChoiceRes[1] === 0x02) { // 0x02, username and password authentication
+	if (serverChoiceRes[1] === 0x02) {
+		// 0x02, username and password authentication
 		// Client authentication request, 0x02
 		const authRequest = new Uint8Array([
 			0x01, // VER, 0x01 for current version of username/password authentication
 			username.length, // IDLEN, username length, uint8
 			...new TextEncoder().encode(username), // ID, username as bytestring
 			password.length, // PWLEN, password length, uint8
-			...new TextEncoder().encode(password) // PW, password as bytestring
+			...new TextEncoder().encode(password), // PW, password as bytestring
 		]);
 		await writer.write(authRequest);
 		// Server response, 0x02
 		const authRes = (await reader.read()).value;
-		if (authRes[0] !== 0x01) { // VER, 0x01 for current version of username/password authentication
+		if (authRes[0] !== 0x01) {
+			// VER, 0x01 for current version of username/password authentication
 			throw new Error(`upexpected auth version(${authRes[0]}), expected 0x01`);
 		}
-		if (authRes[1] !== 0x00) { // STATUS, 0x00 success, otherwise failure, connection must be closed
+		if (authRes[1] !== 0x00) {
+			// STATUS, 0x00 success, otherwise failure, connection must be closed
 			throw new Error(`socks auth failure, status: ${authRes[1]}`);
 		}
 	}
@@ -412,19 +423,16 @@ async function connectBySocks5(remoteAddressType, remoteAddress, remotePort) {
 	let socks5Address;
 	switch (remoteAddressType) {
 		case 0x01: // IPv4 address
-			socks5Address = new Uint8Array(
-				[0x01, ...remoteAddress.split('.').map(Number)]
-			);
+			socks5Address = new Uint8Array([0x01, ...remoteAddress.split('.').map(Number)]);
 			break;
 		case 0x03: // Domain name
-			socks5Address = new Uint8Array(
-				[0x03, remoteAddress.length, ...new TextEncoder().encode(remoteAddress)]
-			);
+			socks5Address = new Uint8Array([0x03, remoteAddress.length, ...new TextEncoder().encode(remoteAddress)]);
 			break;
 		case 0x04: // IPv6 address
-			socks5Address = new Uint8Array(
-				[0x04, ...remoteAddress.split(':').flatMap(x => [parseInt(x.slice(0, 2), 16), parseInt(x.slice(2), 16)])]
-			);
+			socks5Address = new Uint8Array([
+				0x04,
+				...remoteAddress.split(':').flatMap((x) => [parseInt(x.slice(0, 2), 16), parseInt(x.slice(2), 16)]),
+			]);
 			break;
 		default:
 			throw new Error(`unsupported address type: ${remoteAddressType}`);
@@ -436,14 +444,16 @@ async function connectBySocks5(remoteAddressType, remoteAddress, remotePort) {
 		1, // CMD, command code, 0x01: establish a TCP/IP stream connection
 		0, // RSV, reserved, must be 0x00
 		...socks5Address, // DSTADDR, destination address
-		remotePort >> 8, remotePort & 0xff, // DSTPORT, 2 bytes, port number in a network byte order
+		remotePort >> 8,
+		remotePort & 0xff, // DSTPORT, 2 bytes, port number in a network byte order
 	]);
 	await writer.write(clientConnRequest);
 	consoleLog(`client connection finish`);
 
 	// Response packet from server
 	const res = (await reader.read()).value;
-	if (res[0] !== 0x05) { // VER, SOCKS version (0x05)
+	if (res[0] !== 0x05) {
+		// VER, SOCKS version (0x05)
 		throw new Error(`upexpected socks version(${serverChoiceRes[0]}), expected 0x05`);
 	}
 	consoleLog(`response packet from server finish`);
@@ -471,7 +481,6 @@ async function connectBySocks5(remoteAddressType, remoteAddress, remotePort) {
 			throw new Error(`socks server response status: 0x08, address type not supported`);
 		default:
 			throw new Error(`unknown socks server response status: ${res[1]}`);
-
 	}
 
 	writer.releaseLock();
