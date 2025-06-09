@@ -356,8 +356,12 @@ async function handshakeWithRemote(proxySocket, webSocket, subProtocolData, useP
 // 1.3.2.1 connectBySocks5
 // ref: https://en.wikipedia.org/wiki/SOCKS#SOCKS5
 async function connectBySocks5(remoteAddressType, remoteAddress, remotePort) {
-	const [username, password, hostname, port] = socks5Proxy.split(/[:@]/);
-	const socks5ProxySocket = connect({ hostname, port: Number(port) });
+	const url = new URL(`socks5://${socks5Proxy}`);
+	const username = url.username;
+	const password = url.password;
+	const hostname = url.hostname;
+	const port = Number(url.port);
+	const socks5ProxySocket = connect({ hostname, port });
 	consoleLog(`connect socks5: ${hostname}:${port}`);
 
 	// Client greeting
