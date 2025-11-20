@@ -4,6 +4,9 @@ import { createHash } from 'node:crypto';
 let userID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
 let socks5Proxy = ''; // username:passwd@127.0.0.1:8080
 
+const PROTO_V = 'vless';
+const PROTO_T = 'trojan';
+
 export default {
 	async fetch(request, env, ctx) {
 		userID = env.UUID || userID;
@@ -52,11 +55,11 @@ function parseSubProtocol(request) {
 	const url = new URL(decodeURIComponent(request.url));
 	let subProtocol;
 	switch (url.pathname) {
-		case '/vless':
-			subProtocol = 'vless';
+		case '/' + PROTO_V:
+			subProtocol = PROTO_V;
 			break;
-		case '/trojan':
-			subProtocol = 'trojan';
+		case '/' + PROTO_T:
+			subProtocol = PROTO_T;
 			break;
 		default:
 			consoleLog(`Unsupported websocket path: ${url.pathname}`);
@@ -126,14 +129,14 @@ function s2rWStreamHandler(proxySocket, webSocket, subProtocol) {
 // 1.3.1 parseSubProtocolDataFromHeader
 function parseSubProtocolDataFromHeader(protocol, data) {
 	switch (protocol) {
-		case 'vless':
-			const vlessHeader = parseVLESSHeader(data);
+		case PROTO_V:
+			const protoVHeader = parseProtoVHeader(data);
 			// auth check
-			if (vlessHeader.uuid !== userID.replace(/-/g, '')) {
-				consoleLog(`VLESS protocol UUID mismatch`);
-				throw new Error(`VLESS protocol UUID mismatch`);
+			if (protoVHeader.uuid !== userID.replace(/-/g, '')) {
+				consoleLog(`PROTO_V protocol user ID mismatch`);
+				throw new Error(`PROTO_V protocol user ID mismatch`);
 			}
-			vlessHeader.remoteAddressType = ((addressType) => {
+			protoVHeader.remoteAddressType = ((addressType) => {
 				switch (addressType) {
 					case 0x01:
 						return 0x01;
@@ -144,28 +147,27 @@ function parseSubProtocolDataFromHeader(protocol, data) {
 					default:
 						throw new Error('Unsupported address type');
 				}
-			})(vlessHeader.remoteAddressType);
+			})(protoVHeader.remoteAddressType);
 			return {
-				...vlessHeader,
-				responseHeader: new Uint8Array([vlessHeader.version, 0x00]),
+				...protoVHeader,
+				responseHeader: new Uint8Array([protoVHeader.version, 0x00]),
 			};
-		case 'trojan':
-			const trojanHeader = parseTrojanHeader(data);
+		case PROTO_T:
+			const protoTHeader = parseProtoTHeader(data);
 			// auth check
-			if (trojanHeader.hexSHA224PassWD !== createHash('sha224').update(userID).digest('hex')) {
-				consoleLog(`Trojan protocol password mismatch`);
-				throw new Error(`Trojan protocol password mismatch`);
+			if (protoTHeader.hexSHA224PassWD !== createHash('sha224').update(userID).digest('hex')) {
+				consoleLog(`PROTO_T protocol password mismatch`);
+				throw new Error(`PROTO_T protocol password mismatch`);
 			}
-			return { ...trojanHeader };
+			return { ...protoTHeader };
 		default:
 			consoleLog(`Unknown websocket subprotocol: ${protocol}`);
 			throw new Error('Unknown websocket subprotocol');
 	}
 }
 
-// 1.3.1.1 parseVLESSHeader
-// ref: https://xtls.github.io/development/protocols/vless.html
-function parseVLESSHeader(data) {
+// 1.3.1.1 parseProtoVHeader
+function parseProtoVHeader(data) {
 	let offset = 0;
 
 	// Version (1 byte)
@@ -228,9 +230,8 @@ function parseVLESSHeader(data) {
 	};
 }
 
-// 1.3.1.2 parseTrojanHeader
-// ref: https://trojan-gfw.github.io/trojan/protocol
-function parseTrojanHeader(data) {
+// 1.3.1.2 parseProtoTHeader
+function parseProtoTHeader(data) {
 	let offset = 0;
 
 	// hex(SHA224(password)) (56 bytes)
@@ -241,7 +242,7 @@ function parseTrojanHeader(data) {
 	let CR = data[offset++];
 	let LF = data[offset++];
 
-	// Trojan Request
+	// Request
 	// CMD (1 byte)
 	const command = data[offset++];
 	// ATYP (1 byte)
