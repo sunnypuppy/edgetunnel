@@ -24,11 +24,11 @@
    ```
 4. 运行
    ```bash
-   npx wrangler dev 
+   npx wrangler dev
    ```
 
 ## Cloudflare Workers 部署
-0. 在 Cloudflare 控制台创建一个 Workers 项目，创建完成后进入项目设置，找到`兼容性标志`配置项，添加 `nodejs_compat`（代码中 sha224 算法依赖）。
+0. 在 Cloudflare 控制台创建一个 Workers 项目。
 1. 拷贝 [`/src/index.js`](https://github.com/sunnypuppy/edgetunnel/blob/master/src/index.js) 中的代码替换 workers 编辑器中内容，保存并部署。
 2. 配置环境变量
 
