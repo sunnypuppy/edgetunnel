@@ -154,7 +154,7 @@ function parseSubProtocolDataFromHeader(protocol, data) {
 		case PROTO_T:
 			const protoTHeader = parseProtoTHeader(data);
 			// auth check
-			if (protoTHeader.hexSHA224PassWD !== sha224_hash(userPassword)) {
+			if (protoTHeader.hexSHA224PassWD !== sha224_hash(userID)) {
 				consoleLog(`PROTO_T protocol password mismatch`);
 				throw new Error(`PROTO_T protocol password mismatch`);
 			}
