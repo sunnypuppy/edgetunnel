@@ -8,8 +8,11 @@ const PROTO_T = 'trojan';
 
 export default {
 	async fetch(request, env, ctx) {
+		const url = new URL(request.url);
+
 		userID = env.UUID || userID;
 		socks5Proxy = env.SOCKS5_PROXY || socks5Proxy;
+		if (url.searchParams.has('socks5')) socks5Proxy = url.searchParams.get('socks5');
 
 		if (request.headers.get('Upgrade') === 'websocket') {
 			return handlerWebSocketRequest(request);
