@@ -2,6 +2,7 @@ import { connect } from 'cloudflare:sockets';
 
 let userID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
 let socks5Proxy = ''; // username:passwd@127.0.0.1:8080
+let proxyIP = ''; // 127.0.0.1:8080
 
 const PROTO_V = 'vless';
 const PROTO_T = 'trojan';
@@ -13,6 +14,8 @@ export default {
 		userID = env.UUID || userID;
 		socks5Proxy = env.SOCKS5_PROXY || socks5Proxy;
 		if (url.searchParams.has('socks5')) socks5Proxy = url.searchParams.get('socks5');
+		proxyIP = env.PROXY_IP || proxyIP;
+		if (url.searchParams.has('proxyip')) proxyIP = url.searchParams.get('proxyip');
 
 		if (request.headers.get('Upgrade') === 'websocket') {
 			return handlerWebSocketRequest(request);
@@ -123,7 +126,8 @@ function s2rWStreamHandler(proxySocket, webSocket, subProtocol) {
 			const subProtocolData = parseSubProtocolDataFromHeader(subProtocol, chunk);
 
 			// connect to remote
-			handshakeWithRemote(proxySocket, webSocket, subProtocolData);
+			const sender = (chunk) => webSocket.send(chunk);
+			await handshakeWithRemote(proxySocket, sender, subProtocolData);
 		},
 	});
 }
@@ -376,7 +380,7 @@ function sha224_hash(msg) {
 }
 
 // 1.3.2 handshakeWithRemote
-async function handshakeWithRemote(proxySocket, webSocket, subProtocolData, useProxy = false) {
+async function handshakeWithRemote(proxySocket, sender, subProtocolData, useProxy = false) {
 	let needRetryByProxy = false;
 
 	// 1.connect
@@ -388,6 +392,12 @@ async function handshakeWithRemote(proxySocket, webSocket, subProtocolData, useP
 				subProtocolData.remoteAddress,
 				subProtocolData.remotePort
 			);
+		} else if (proxyIP) {
+			consoleLog(`connect to ${subProtocolData.remoteAddress}:${subProtocolData.remotePort} by proxy ip`);
+			proxySocket.tcpSocket = connect({
+				hostname: proxyIP.split(':')[0],
+				port: Number(proxyIP.split(':')[1] || 443),
+			});
 		} else {
 			throw new Error('No available proxy config');
 		}
@@ -413,7 +423,7 @@ async function handshakeWithRemote(proxySocket, webSocket, subProtocolData, useP
 	consoleLog(`0-rtt data write finish: need_retry=${needRetryByProxy}, use_proxy=${useProxy}`);
 	if (needRetryByProxy && !useProxy) {
 		consoleLog(`Retry handshake with remote because of writable stream timeout`);
-		return handshakeWithRemote(proxySocket, webSocket, subProtocolData, (useProxy = true));
+		return handshakeWithRemote(proxySocket, sender, subProtocolData, (useProxy = true));
 	}
 
 	// 3.read back
@@ -427,7 +437,7 @@ async function handshakeWithRemote(proxySocket, webSocket, subProtocolData, useP
 
 					consoleLog(`received data from remote: ${chunk.byteLength}`);
 					const dataToSend = subProtocolData.responseHeader ? await new Blob([subProtocolData.responseHeader, chunk]).arrayBuffer() : chunk;
-					webSocket.send(dataToSend);
+					sender(dataToSend);
 					subProtocolData.responseHeader = null;
 					consoleLog(`received data from remote: finish`);
 				},
@@ -436,7 +446,7 @@ async function handshakeWithRemote(proxySocket, webSocket, subProtocolData, useP
 		consoleLog(`tcpsocket readable stream finish: need_retry=${needRetryByProxy}, use_proxy=${useProxy}`);
 		if (needRetryByProxy && !useProxy) {
 			consoleLog(`Retry handshake with remote (use proxy) because of readstream empty`);
-			return handshakeWithRemote(proxySocket, webSocket, subProtocolData, (useProxy = true));
+			return handshakeWithRemote(proxySocket, sender, subProtocolData, (useProxy = true));
 		}
 	})();
 }
