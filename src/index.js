@@ -9,7 +9,7 @@ const PROTO_T = 'trojan';
 
 export default {
 	async fetch(request, env, ctx) {
-		const url = new URL(request.url);
+		const url = new URL(decodeURIComponent(request.url));
 
 		userID = env.UUID || userID;
 		socks5Proxy = env.SOCKS5_PROXY || socks5Proxy;
