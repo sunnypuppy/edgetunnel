@@ -1,24 +1,19 @@
 import { connect } from 'cloudflare:sockets';
 
-let userID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
-let socks5Proxy = ''; // username:passwd@127.0.0.1:8080
-let proxyIP = ''; // 127.0.0.1:8080
-
-const PROTO_V = 'vless';
-const PROTO_T = 'trojan';
+const PROTO_V = 'v';
+const PROTO_T = 't';
 
 export default {
 	async fetch(request, env, ctx) {
 		const url = new URL(decodeURIComponent(request.url));
-
-		userID = env.UUID || userID;
-		socks5Proxy = env.SOCKS5_PROXY || socks5Proxy;
-		if (url.searchParams.has('socks5')) socks5Proxy = url.searchParams.get('socks5');
-		proxyIP = env.PROXY_IP || proxyIP;
-		if (url.searchParams.has('proxyip')) proxyIP = url.searchParams.get('proxyip');
+		const requestConfig = {
+			userID: env.UUID || 'd342d11e-d424-4583-b36e-524ab1f0afa4',
+			socks5Proxy: url.searchParams.get('socks5') ?? env.SOCKS5_PROXY ?? '',
+			proxyIP: url.searchParams.get('proxyip') ?? env.PROXY_IP ?? '',
+		};
 
 		if (request.headers.get('Upgrade') === 'websocket') {
-			return handlerWebSocketRequest(request);
+			return handlerWebSocketRequest(request, requestConfig);
 		}
 		return handlerHTTPRequest(request);
 	},
@@ -31,7 +26,7 @@ function consoleLog(...args) {
 }
 
 // 1 handlerWebSocketRequest
-async function handlerWebSocketRequest(request) {
+async function handlerWebSocketRequest(request, requestConfig) {
 	// websockt: client <--> server
 	const [client, webSocket] = Object.values(new WebSocketPair());
 	webSocket.accept();
@@ -40,12 +35,12 @@ async function handlerWebSocketRequest(request) {
 	let proxySocket = { tcpSocket: null };
 
 	// parse subprotocol
-	const subProtocol = parseSubProtocol(request);
+	requestConfig = { ...requestConfig, subProtocol: parseSubProtocol(request) };
 
 	// handler client to server readable stream
 	const c2sRStream = c2sRStreamHandler(request, webSocket);
 	// handler server to remote writable stream
-	const s2rWStream = s2rWStreamHandler(proxySocket, webSocket, subProtocol);
+	const s2rWStream = s2rWStreamHandler(proxySocket, webSocket, requestConfig);
 	// pass data by pipe
 	c2sRStream.pipeTo(s2rWStream);
 
@@ -76,10 +71,25 @@ function parseSubProtocol(request) {
 
 // 1.2 c2sRStreamHandler
 function c2sRStreamHandler(request, webSocket) {
+	let messageChain = Promise.resolve();
 	return new ReadableStream({
 		start(controller) {
 			webSocket.addEventListener('message', (event) => {
-				controller.enqueue(event.data);
+				messageChain = messageChain.then(async () => {
+					let data = event.data;
+					if (data instanceof ArrayBuffer) {
+						data = new Uint8Array(data);
+					} else if (ArrayBuffer.isView(data)) {
+						data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+					} else if (data instanceof Blob) {
+						data = new Uint8Array(await data.arrayBuffer());
+					} else if (typeof data === 'string') {
+						data = new TextEncoder().encode(data);
+					} else {
+						throw new TypeError(`Unsupported websocket message data type: ${Object.prototype.toString.call(data)}`);
+					}
+					controller.enqueue(data);
+				})
 			});
 			webSocket.addEventListener('close', (event) => {
 				consoleLog(`websocket close event: ${JSON.stringify(event)}`);
@@ -112,7 +122,7 @@ function base64ToUint8Array(base64Url) {
 }
 
 // 1.3 s2rWStreamHandler
-function s2rWStreamHandler(proxySocket, webSocket, subProtocol) {
+function s2rWStreamHandler(proxySocket, webSocket, requestConfig) {
 	return new WritableStream({
 		async write(chunk, controller) {
 			if (proxySocket.tcpSocket) {
@@ -123,22 +133,22 @@ function s2rWStreamHandler(proxySocket, webSocket, subProtocol) {
 			}
 
 			// parse 0-RTT data from header
-			const subProtocolData = parseSubProtocolDataFromHeader(subProtocol, chunk);
+			const subProtocolData = parseSubProtocolDataFromHeader(chunk, requestConfig);
 
 			// connect to remote
 			const sender = (chunk) => webSocket.send(chunk);
-			await handshakeWithRemote(proxySocket, sender, subProtocolData);
+			await handshakeWithRemote(proxySocket, sender, subProtocolData, requestConfig);
 		},
 	});
 }
 
 // 1.3.1 parseSubProtocolDataFromHeader
-function parseSubProtocolDataFromHeader(protocol, data) {
-	switch (protocol) {
+function parseSubProtocolDataFromHeader(data, requestConfig) {
+	switch (requestConfig.subProtocol) {
 		case PROTO_V:
 			const protoVHeader = parseProtoVHeader(data);
 			// auth check
-			if (protoVHeader.uuid !== userID.replace(/-/g, '')) {
+			if (protoVHeader.uuid !== requestConfig.userID.replace(/-/g, '')) {
 				consoleLog(`PROTO_V protocol user ID mismatch`);
 				throw new Error(`PROTO_V protocol user ID mismatch`);
 			}
@@ -161,13 +171,13 @@ function parseSubProtocolDataFromHeader(protocol, data) {
 		case PROTO_T:
 			const protoTHeader = parseProtoTHeader(data);
 			// auth check
-			if (protoTHeader.hexSHA224PassWD !== sha224_hash(userID)) {
+			if (protoTHeader.hexSHA224PassWD !== sha224_hash(requestConfig.userID)) {
 				consoleLog(`PROTO_T protocol password mismatch`);
 				throw new Error(`PROTO_T protocol password mismatch`);
 			}
 			return { ...protoTHeader };
 		default:
-			consoleLog(`Unknown websocket subprotocol: ${protocol}`);
+			consoleLog(`Unknown websocket subprotocol: ${requestConfig.subProtocol}`);
 			throw new Error('Unknown websocket subprotocol');
 	}
 }
@@ -380,25 +390,27 @@ function sha224_hash(msg) {
 }
 
 // 1.3.2 handshakeWithRemote
-async function handshakeWithRemote(proxySocket, sender, subProtocolData, useProxy = false) {
+async function handshakeWithRemote(proxySocket, sender, subProtocolData, requestConfig, useProxy = false) {
 	let needRetryByProxy = false;
 
 	// 1.connect
 	if (useProxy) {
-		if (socks5Proxy) {
+		if (requestConfig.socks5Proxy) {
 			consoleLog(`connect to ${subProtocolData.remoteAddress}:${subProtocolData.remotePort} by socks5 proxy`);
 			proxySocket.tcpSocket = await connectBySocks5(
 				subProtocolData.remoteAddressType,
 				subProtocolData.remoteAddress,
-				subProtocolData.remotePort
+				subProtocolData.remotePort,
+				requestConfig.socks5Proxy
 			);
-		} else if (proxyIP) {
+		} else if (requestConfig.proxyIP) {
 			consoleLog(`connect to ${subProtocolData.remoteAddress}:${subProtocolData.remotePort} by proxy ip`);
 			proxySocket.tcpSocket = connect({
-				hostname: proxyIP.split(':')[0],
-				port: Number(proxyIP.split(':')[1] || 443),
+				hostname: requestConfig.proxyIP.split(':')[0],
+				port: Number(requestConfig.proxyIP.split(':')[1] || 443),
 			});
 		} else {
+			consoleLog(`No available proxy config for ${subProtocolData.remoteAddress}:${subProtocolData.remotePort}`);
 			throw new Error('No available proxy config');
 		}
 	} else {
@@ -423,7 +435,7 @@ async function handshakeWithRemote(proxySocket, sender, subProtocolData, useProx
 	consoleLog(`0-rtt data write finish: need_retry=${needRetryByProxy}, use_proxy=${useProxy}`);
 	if (needRetryByProxy && !useProxy) {
 		consoleLog(`Retry handshake with remote because of writable stream timeout`);
-		return handshakeWithRemote(proxySocket, sender, subProtocolData, (useProxy = true));
+		return handshakeWithRemote(proxySocket, sender, subProtocolData, requestConfig, (useProxy = true));
 	}
 
 	// 3.read back
@@ -446,14 +458,14 @@ async function handshakeWithRemote(proxySocket, sender, subProtocolData, useProx
 		consoleLog(`tcpsocket readable stream finish: need_retry=${needRetryByProxy}, use_proxy=${useProxy}`);
 		if (needRetryByProxy && !useProxy) {
 			consoleLog(`Retry handshake with remote (use proxy) because of readstream empty`);
-			return handshakeWithRemote(proxySocket, sender, subProtocolData, (useProxy = true));
+			return handshakeWithRemote(proxySocket, sender, subProtocolData, requestConfig, (useProxy = true));
 		}
 	})();
 }
 
 // 1.3.2.1 connectBySocks5
 // ref: https://en.wikipedia.org/wiki/SOCKS#SOCKS5
-async function connectBySocks5(remoteAddressType, remoteAddress, remotePort) {
+async function connectBySocks5(remoteAddressType, remoteAddress, remotePort, socks5Proxy) {
 	const url = new URL(`socks5://${socks5Proxy}`);
 	const username = url.username;
 	const password = url.password;
